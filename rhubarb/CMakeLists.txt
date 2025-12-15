@@ -54,10 +54,24 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # Define libraries
 
 # ... Boost
-cmake_policy(SET CMP0167 OLD)  # Use the legacy Boost CMake integration
-find_package(Boost 1.54 REQUIRED)
-include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
-link_libraries(Boost::headers) # Just about every project needs Boost, but just the headers
+if(ANDROID)
+	message(STATUS "Configuring Boost manually for Android (header-only)")
+
+	# Path to your Boost installation on Windows (headers only are needed)
+	set(Boost_INCLUDE_DIRS "C:/Libraries/boost_1_89_0")
+
+	# Define a fake Boost::headers target that only provides include dirs
+	add_library(Boost::headers INTERFACE IMPORTED)
+	target_include_directories(Boost::headers INTERFACE ${Boost_INCLUDE_DIRS})
+
+	include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+	link_libraries(Boost::headers)
+else()
+	cmake_policy(SET CMP0167 OLD)  # Use the legacy Boost CMake integration
+	find_package(Boost 1.54 REQUIRED)
+	include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+	link_libraries(Boost::headers) # Just about every project needs Boost, but just the headers
+endif()
 
 # ... C++ Format
 FILE(GLOB cppFormatFiles "lib/cppformat/*.cc")
@@ -394,6 +408,26 @@ target_link_libraries(rhubarb-lib
 	rhubarb-tools
 )
 
+# --- rhubarb-lipsync: shared library with C API --------------------------------
+add_library(rhubarb-lipsync SHARED
+		src/rhubarb/rhubarb_c_api.cpp
+)
+
+target_include_directories(rhubarb-lipsync PUBLIC
+		"src"
+)
+
+target_link_libraries(rhubarb-lipsync
+		rhubarb-lib
+		rhubarb-exporters
+)
+
+# Extra system libs for Android
+if(ANDROID)
+	# Needed because sphinxbase uses __android_log_vprint from <android/log.h>
+	target_link_libraries(rhubarb-lipsync log)
+endif()
+
 # ... rhubarb-logging
 add_library(rhubarb-logging
 	src/logging/Entry.cpp
@@ -530,6 +564,7 @@ set(TEST_FILES
 	tests/g2pTests.cpp
 	tests/LazyTests.cpp
 	tests/WaveFileReaderTests.cpp
+	tests/rhubarbCapiTests.cpp
 )
 add_executable(runTests ${TEST_FILES})
 target_link_libraries(runTests
@@ -539,6 +574,7 @@ target_link_libraries(runTests
 	rhubarb-recognition
 	rhubarb-time
 	rhubarb-audio
+	rhubarb-lipsync
 )
 
 # Copies the specified files in a post-build event, then installs them

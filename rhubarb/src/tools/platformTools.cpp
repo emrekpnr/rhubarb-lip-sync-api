@@ -14,6 +14,9 @@
 #ifdef _WIN32
 	#include <Windows.h>
 #endif
+#if defined(ANDROID)
+  #include <cstdlib>   // getenv
+#endif
 #include "fileTools.h"
 
 using std::filesystem::path;
@@ -53,6 +56,39 @@ path getBinPath() {
 }
 
 path _getBinDirectory() {
+
+#if defined(ANDROID)
+	// On Android, wai_getExecutablePath() usually returns /system/bin/app_process64
+	// which is NOT our library/app folder. So we allow the host app to override
+	// the "bin directory" via an env var set by rhubarb_set_resource_root().
+	if (const char* rr = std::getenv("RHUBARB_RESOURCE_ROOT")) {
+		if (rr[0] != '\0') {
+			path binDirectory = path(rr);
+
+			// Sanity check: must contain res/sphinx/cmudict-en-us.dict
+			path testPath = binDirectory / "res" / "sphinx" / "cmudict-en-us.dict";
+			if (!std::filesystem::exists(testPath)) {
+				throw std::runtime_error(fmt::format(
+					"RHUBARB_RESOURCE_ROOT is set to {}, but could not find resource file {}.",
+					binDirectory.u8string(),
+					testPath.u8string()
+				));
+			}
+			try {
+				throwIfNotReadable(testPath);
+			} catch (...) {
+				throw std::runtime_error(fmt::format(
+					"Cannot read resource file {}. Please check file permissions.",
+					testPath.u8string()
+				));
+			}
+
+			return binDirectory;
+		}
+	}
+#endif
+
+	// Default behavior (desktop)
 	path binPath = getBinPath();
 	path binDirectory = binPath.parent_path();
 
@@ -77,10 +113,16 @@ path _getBinDirectory() {
 	return binDirectory;
 }
 
+
 // Returns the directory containing the Rhubarb executable binary.
 path getBinDirectory() {
+#if defined(ANDROID)
+	// Don't cache on Android: app may call rhubarb_set_resource_root() later.
+	return _getBinDirectory();
+#else
 	static const path result = _getBinDirectory();
 	return result;
+#endif
 }
 
 path getTempFilePath() {

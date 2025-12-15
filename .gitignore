@@ -1,3 +1,8 @@
 .vs/
 build/
 *.user
+
+.idea/
+build-android-arm64/
+build-android-armv7/
+output/
